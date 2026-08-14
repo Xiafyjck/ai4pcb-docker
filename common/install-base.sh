@@ -25,6 +25,7 @@ packages=(
     strace
     file
     less
+    vim
     tmux
     jq
     unzip
