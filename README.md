@@ -12,7 +12,7 @@
 所有变体均包含：
 
 - root 公钥 SSH，仅允许公钥登录
-- GNU/glibc 版 `uv`、`just`、`vim`
+- 官方安装脚本安装的 `uv`、固定版本的 `just`、`vim`
 - Git、curl、wget、rsync
 - ping、ip/ss、dig、nc、mtr、traceroute、tcpdump、socat
 - 常用诊断和压缩工具
