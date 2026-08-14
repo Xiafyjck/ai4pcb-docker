@@ -1,0 +1,99 @@
+name: Build container images
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Image variant to build
+        required: true
+        type: choice
+        default: cu132-devel-ubuntu2404
+        options:
+          - cu132-devel-ubuntu2404
+          - cu132-runtime-ubuntu2404
+          - all
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-images-${{ inputs.variant }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      variants: ${{ steps.variants.outputs.json }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Select variants
+        id: variants
+        env:
+          SELECTED: ${{ inputs.variant }}
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "$SELECTED" == "all" ]]; then
+            mapfile -t variants < <(
+              find images -mindepth 1 -maxdepth 1 -type f -name Dockerfile \
+                -printf '%h\n' | xargs -n1 basename | sort
+            )
+          else
+            [[ "$SELECTED" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+            [[ -f "images/$SELECTED/Dockerfile" ]]
+            variants=("$SELECTED")
+          fi
+
+          json=$(printf '%s\n' "${variants[@]}" | jq -R -s -c 'split("\n")[:-1]')
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.prepare.outputs.variants) }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ matrix.variant }}
+            type=sha,prefix=${{ matrix.variant }}-sha-
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: images/${{ matrix.variant }}/Dockerfile
+          platforms: linux/amd64
+          pull: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          provenance: mode=max
+          sbom: true

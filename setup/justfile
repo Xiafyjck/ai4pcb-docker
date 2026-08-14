@@ -1,0 +1,28 @@
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+setup: tools shell verify
+
+tools:
+    apt-get update
+    apt-get install -y --no-install-recommends \
+      ripgrep fd-find bat fzf eza zoxide btop htop tree direnv shellcheck shfmt vim
+    rm -rf /var/lib/apt/lists/*
+    ln -sf /usr/bin/fdfind /usr/local/bin/fd
+    ln -sf /usr/bin/batcat /usr/local/bin/bat
+
+shell:
+    grep -q 'zoxide init bash' /root/.bashrc || \
+      echo 'eval "$(zoxide init bash)"' >> /root/.bashrc
+    grep -q 'direnv hook bash' /root/.bashrc || \
+      echo 'eval "$(direnv hook bash)"' >> /root/.bashrc
+
+python version="3.12":
+    uv python install {{version}}
+
+verify:
+    uv --version
+    just --version
+    git --version
+    rg --version
+    fd --version
+    bat --version
