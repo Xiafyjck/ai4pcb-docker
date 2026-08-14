@@ -39,10 +39,16 @@ jobs:
           set -Eeuo pipefail
 
           if [[ "$SELECTED" == "all" ]]; then
-            mapfile -t variants < <(
-              find images -mindepth 1 -maxdepth 1 -type f -name Dockerfile \
-                -printf '%h\n' | xargs -n1 basename | sort
-            )
+            variants=()
+            for dockerfile in images/*/Dockerfile; do
+              [[ -f "$dockerfile" ]] || continue
+              variant="${dockerfile#images/}"
+              variants+=("${variant%/Dockerfile}")
+            done
+            ((${#variants[@]} > 0)) || {
+              echo "No image variants found" >&2
+              exit 1
+            }
           else
             [[ "$SELECTED" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
             [[ -f "images/$SELECTED/Dockerfile" ]]
