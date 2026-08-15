@@ -9,10 +9,10 @@
 #    mihomo 要等容器起来之后才由 vpn.py 拉起——中间这段时间里 jupyter/code-server
 #    终端里的每一次 curl/pip/npm 都会撞上一个不存在的代理。改由 profile.d 探测到
 #    代理确实在监听时才导出（见 common/proxy-env.sh）。
+ARG GO_VERSION=1.26
 FROM ghcr.io/casey/just:1.58.0 AS just
 # wireproxy：用户态 WireGuard，不需要 /dev/net/tun 和 NET_ADMIN。上游模块已迁到
 # windtf，旧的 pufferffish/octeep 路径会重定向过去并报 go.mod 路径校验错。
-ARG GO_VERSION=1.26
 FROM golang:${GO_VERSION}-bookworm AS wireproxy
 ARG WIREPROXY_VERSION=latest
 ARG GOPROXY=https://goproxy.cn,direct
