@@ -151,6 +151,58 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u OWNER --password-stdin
 
 Token 只需要 `read:packages` 权限。
 
+## 可选：同步到学院镜像仓库
+
+如果学院不能直接从 GHCR 拉取，可以先在安装了 Docker Desktop 或 OrbStack
+的电脑上拉取镜像，再重新标记并推送到学院仓库。Apple Silicon Mac 必须显式
+指定 `linux/amd64`，避免上传错误架构。
+
+推荐使用 Actions 对应的短提交号作为版本，避免覆盖旧镜像。下面以开发镜像
+和短提交号 `8fedfed` 为例；后续上传时替换 `SOURCE_SHA` 即可：
+
+```bash
+VARIANT=cu132-devel-ubuntu2404
+SOURCE_SHA=8fedfed
+SOURCE="ghcr.io/xiafyjck/ai4pcb-docker:${VARIANT}-sha-${SOURCE_SHA}"
+TARGET="docker-qb.sii.edu.cn/inspire-studio/ai4pcb-docker:${VARIANT}-sha-${SOURCE_SHA}"
+```
+
+私有 GHCR 镜像需要先登录；公开镜像可跳过：
+
+```bash
+docker login ghcr.io -u Xiafyjck
+```
+
+拉取 x86_64 镜像并确认架构：
+
+```bash
+docker pull --platform linux/amd64 "$SOURCE"
+docker image inspect "$SOURCE" --format '{{.Os}}/{{.Architecture}}  {{.Id}}'
+```
+
+输出应以 `linux/amd64` 开头。然后登录学院仓库、打标签并推送：
+
+```bash
+docker login docker-qb.sii.edu.cn
+docker tag "$SOURCE" "$TARGET"
+docker push "$TARGET"
+```
+
+如需一个始终指向最新版的滚动标签，可以在版本化标签成功推送后再执行：
+
+```bash
+LATEST_TARGET="docker-qb.sii.edu.cn/inspire-studio/ai4pcb-docker:${VARIANT}"
+docker tag "$SOURCE" "$LATEST_TARGET"
+docker push "$LATEST_TARGET"
+```
+
+运行环境优先使用带 `sha` 的版本化标签，方便回滚。若要上传 runtime 镜像，
+只需改为：
+
+```bash
+VARIANT=cu132-runtime-ubuntu2404
+```
+
 ## 添加新变体
 
 1. 复制 `images/` 下最接近的目录并修改 Dockerfile。
