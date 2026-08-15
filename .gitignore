@@ -6,3 +6,6 @@ workspace/
 *.tar
 *.tar.gz
 *.tar.zst
+*.gz
+config.yaml
+.codex/

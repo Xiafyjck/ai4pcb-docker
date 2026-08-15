@@ -6,6 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 packages=(
     openssh-server
     openssh-client
+    supervisor
     ca-certificates
     curl
     wget
@@ -29,6 +30,7 @@ packages=(
     tmux
     jq
     unzip
+    gzip
     xz-utils
     zstd
     bash-completion
@@ -50,6 +52,8 @@ rm -rf /var/lib/apt/lists/*
 
 install -d -m 0755 /run/sshd
 install -d -m 0700 /run/ssh /root/.ssh
+install -d -m 0755 /etc/mihomo /etc/supervisor /var/log/supervisor
+install -d -m 0700 /var/lib/mihomo
 rm -f /etc/ssh/ssh_host_*
 
 install -m 0644 \
@@ -59,6 +63,22 @@ install -m 0644 \
 install -m 0755 \
     /opt/ai4pcb/common/docker-entrypoint.sh \
     /usr/local/bin/docker-entrypoint
+
+install -m 0755 \
+    /opt/ai4pcb/common/start-mihomo.sh \
+    /usr/local/bin/start-mihomo
+
+install -m 0755 \
+    /opt/ai4pcb/common/nvm-exec.sh \
+    /usr/local/bin/nvm
+
+install -m 0644 \
+    /opt/ai4pcb/common/supervisord.conf \
+    /etc/supervisor/supervisord.conf
+
+install -m 0644 \
+    /opt/ai4pcb/common/proxy-env.sh \
+    /etc/profile.d/ai4pcb-proxy.sh
 
 install -m 0755 \
     /opt/ai4pcb/common/setup.sh \

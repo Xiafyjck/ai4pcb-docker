@@ -27,5 +27,5 @@ fi
 chown root:root "${key_target}"
 chmod 0600 "${key_target}"
 
-echo "Public key ready; starting sshd."
-exec /usr/sbin/sshd -D -e
+echo "Public key ready; starting managed services."
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
