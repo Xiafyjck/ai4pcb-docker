@@ -15,6 +15,7 @@ build variant=default_variant platform="linux/amd64":
     docker buildx build \
       --platform "{{platform}}" \
       --pull \
+      --build-arg "TOOL_REFRESH=$(date -u +%Y%m%d%H%M%S)" \
       --load \
       -f "images/{{variant}}/Dockerfile" \
       -t "ai4pcb-docker:{{variant}}" \
@@ -52,4 +53,4 @@ start name=default_container:
 
 inspect name=default_container:
     docker exec "{{name}}" bash -lc \
-      'nvcc --version 2>/dev/null || true; uv --version; just --version; curl --version | head -1'
+      'nvcc --version 2>/dev/null || true; node --version; npm --version; mihomo -v; uv --version; just --version; curl --version | head -1'
