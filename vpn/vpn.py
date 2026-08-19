@@ -34,8 +34,9 @@ wg 配置和 clash 订阅直接给路径——代码和数据分开，见下方 
 含糊比出错更危险。
 
 wg 配置是每容器一份（各自的内网 IP），决定“本容器是谁”，所以做成位置参数、只留一个
-入口；clash 订阅则是所有容器共用一份，跟身份无关，所以做成 --clash-conf，不给就自动
-认领目录里唯一的 *.yaml。
+入口；clash 订阅则是所有容器共用一份，跟身份无关，所以做成 --clash-conf。必须显式给路径：
+早先那套“认领目录里唯一的 *.yaml”是代码和数据同处一个文件夹时的产物，多放一份订阅就会
+突然罢工。
 
 所有动作幂等：重复 start 收敛到“运行中”，可安全放进每次容器启动的引导里。
 """
@@ -115,49 +116,23 @@ def resolve_wg_conf(a) -> Path:
     return c
 
 
-def resolve_clash_conf(override, near: Path = None, soft: bool = False):
-    """定位 clash 订阅。
+def resolve_clash_conf(override) -> Path:
+    """定位 clash 订阅：只认显式给出的路径。
 
-    订阅是所有容器共用的一份，跟 name 无关，所以不按 name 派生。不显式指定时认领
-    目录里唯一的 *.yaml——订阅文件名由机场决定（<订阅>.yaml 之类），写死在代码里
-    迟早对不上；“有且仅有一份就用它”既省掉配置项，换订阅时也不用改命令。多于一份
-    时绝不猜，要求显式指定。
+    早先这里会去目录里认领“唯一的那份 *.yaml”。那是代码和数据同处一个文件夹时的产物
+    ——脚本、订阅、运行时目录都挤在一起，扫一眼就能猜中。装进镜像、配置逐项指向具体
+    文件之后，这条约定只剩两个坏处：多放一份订阅就突然罢工，而它报出来的目录还未必是
+    用户以为的那个。要哪份就写哪份。
 
-    找的目录有两个，按顺序：wg 配置所在的那个（near），再是回退基准 BASE。前者是
-    本工具装进镜像之后的常态——BASE 那时指向镜像里的脚本目录，那儿永远不会有订阅；
-    后者是共享卷上直接 ./vpn.py 的老布局，订阅就搁在脚本旁边。
-
-    soft=True 时定位不了只报一行、返回 None，不退出。给 status 这类只读命令用：订阅
-    选哪份跟三个服务在不在没有关系，不该因为前者不确定就连后者也看不成。
+    不想要代理时用 --no-clash，那才是“没有订阅”的正当表达方式。
     """
-    def fail(msg):
-        if soft:
-            log(msg)
-            return None
-        die(msg)
-
-    if override:
-        c = Path(override).expanduser().resolve()
-        if not c.is_file():
-            return fail(f"--clash-conf not found: {c}")
-        return c
-
-    searched = []
-    for d in ([near] if near else []) + [BASE]:
-        if d in searched:
-            continue
-        searched.append(d)
-        cands = sorted(p for p in d.glob("*.y*ml") if p.is_file())
-        if len(cands) == 1:
-            return cands[0]
-        if cands:
-            names = ", ".join(p.name for p in cands)
-            return fail(f"{d} 下有多份 yaml：{names}\n"
-                        f"       请用 --clash-conf <path> 指明用哪一份")
-
-    where = "、".join(str(d) for d in searched)
-    return fail(f"没有在 {where} 找到 clash 订阅（*.yaml）\n"
-                f"       用 --clash-conf <path> 指定，或把订阅放到 wg 配置旁边")
+    if not override:
+        die("没有指定 clash 订阅\n"
+            "       用 --clash-conf <path> 给出路径，或 --no-clash 只起隧道")
+    c = Path(override).expanduser().resolve()
+    if not c.is_file():
+        die(f"--clash-conf not found: {c}")
+    return c
 
 
 def clash_port(conf: Path) -> int:
@@ -433,8 +408,8 @@ def listener_pid(port: int):
     return int(m.group(1)) if m else None
 
 
-def reap_legacy(cport: int) -> None:
-    """腾空端口：杀掉不受 supervisor 管的同名进程。
+def reap_legacy(cport) -> None:
+    """腾空端口：杀掉不受 supervisor 管的同名进程。cport 为 None 表示不起代理。
 
     正常情况下这里什么都不用做——容器刚起来时没人启动这些服务。它是给“手工起过
     一次 mihomo”“supervisord 被 kill -9 后留下孤儿”这类情况兜底的：端口被占着的话
@@ -445,6 +420,8 @@ def reap_legacy(cport: int) -> None:
     “sshd: root@pts/3”。按 [listener] 区分，不能按 argv[0]——新版里监听进程的
     argv[0] 也是 “sshd:”。这一点必须做对，否则执行 start 的人会被自己踢下线。
     """
+    ports = tuple(x for x in (SSH_PORT, cport) if x)
+
     victims = []
     for p in Path("/proc").glob("[0-9]*"):
         argv = _cmdline(p.name)
@@ -468,10 +445,10 @@ def reap_legacy(cport: int) -> None:
     # 等端口真正释放再往下走。直接 sleep 一个定值要么白等、要么不够——TIME_WAIT
     # 之外，被 SIGTERM 的进程收尾也需要时间。
     for _ in range(50):
-        if not any(listener_pid(x) for x in (SSH_PORT, cport)):
+        if not any(listener_pid(x) for x in ports):
             return
         time.sleep(0.2)
-    log(f"warning: 端口 {SSH_PORT}/{cport} 仍被占用，服务可能起不来")
+    log(f"warning: 端口 {'/'.join(str(x) for x in ports)} 仍被占用，服务可能起不来")
 
 
 # ---------------------------------------------------------------- supervisor
@@ -515,7 +492,7 @@ def _svc_pid(status_out: str, svc: str):
     return int(m.group(1)) if m else None
 
 
-def verify(name: str, cport: int, want) -> bool:
+def verify(name: str, cport, want) -> bool:
     """启动后核对结果：状态全 RUNNING，且端口确实归我们的进程。
 
     supervisor 只保证进程活着，不保证它干成了活——mihomo 绑不上 mixed-port 时只记
@@ -567,12 +544,14 @@ def _acquire_lock(name: str):
 def start(a) -> None:
     """把本容器接入 wg、开出 clash 代理、开放 SSH；已在运行则原样返回。"""
     wg_conf = resolve_wg_conf(a)
-    clash_conf = resolve_clash_conf(a.clash_conf, wg_conf.parent)
     want = set(SERVICES)
     if a.no_clash:
         want.discard("mihomo")
     if a.no_wg:
         want.discard("wireproxy")
+
+    # 不起 mihomo 就不需要订阅。放在 want 算完之后要，省得 --no-clash 还被逼着给一份。
+    clash_conf = resolve_clash_conf(a.clash_conf) if "mihomo" in want else None
 
     lock = _acquire_lock(a.name)
     if lock is None:
@@ -581,13 +560,17 @@ def start(a) -> None:
     try:
         rd = run_dir(a.name)
         (rd / "mihomo").mkdir(parents=True, exist_ok=True)
-        cport = clash_port(clash_conf)
+        cport = clash_port(clash_conf) if clash_conf else None
 
         install_authorized_key()
         ensure_host_keys(rd)
         wp_conf = build_wireproxy_conf(a.name, wg_conf, rd)
         conf = build_supervisord_conf(a.name, rd, wp_conf, clash_conf, want)
-        write_proxy_profile(cport, wg_network(wg_conf))
+        if cport:
+            write_proxy_profile(cport, wg_network(wg_conf))
+        else:
+            # 没有代理还留着上一次的 profile，新 shell 会指向一个不存在的端口。
+            PROXY_PROFILE.unlink(missing_ok=True)
 
         if is_up(a.name):
             # 配置可能已经变了（换订阅、改 wg），让 supervisord 重读并收敛。
@@ -650,8 +633,8 @@ def status(a) -> None:
     out = ctl(a.name, "status", capture=True)
     for line in out.strip().splitlines():
         log(line)
-    clash_conf = resolve_clash_conf(a.clash_conf, resolve_wg_conf(a).parent, soft=True)
-    if clash_conf:
+    if a.clash_conf:
+        clash_conf = resolve_clash_conf(a.clash_conf)
         port = clash_port(clash_conf)
         log(f"clash 配置: {clash_conf.name}  代理: 127.0.0.1:{port}  API: {CLASH_API}")
     log(f"日志目录: {run_dir(a.name) / 'log'}")
@@ -696,7 +679,7 @@ def main() -> None:
                          "或任意 .conf 路径")
     ap.add_argument("service", nargs="?",
                     help=f"logs 专用，看哪个服务（{'/'.join(SERVICES)}），默认 wireproxy")
-    ap.add_argument("--clash-conf", help="clash 订阅路径，默认认领本目录唯一的 *.yaml")
+    ap.add_argument("--clash-conf", help="clash 订阅路径；不给则不起 mihomo")
     ap.add_argument("--no-clash", action="store_true", help="不起 mihomo")
     ap.add_argument("--no-wg", action="store_true", help="不起 wireproxy")
     a = ap.parse_args()

@@ -253,14 +253,6 @@ cmd_config() {
         fi
     done
 
-    # 服务可以额外定义一个 <名字>_check，做本字段清单查不出来的交叉校验。可选：没定义
-    # 就跳过，加服务的人不必为此写空函数。
-    local s
-    for s in $(service_names); do
-        if declare -F "${s}_check" >/dev/null; then
-            "${s}_check" || true
-        fi
-    done
 }
 
 cmd_doctor() {

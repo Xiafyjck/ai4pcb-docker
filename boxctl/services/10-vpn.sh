@@ -33,24 +33,10 @@ _vpn_build_argv() {
     _vpn_argv=("${BOXCTL_WG_CONF}")
     if [[ -n "${BOXCTL_CLASH_CONF:-}" ]]; then
         _vpn_argv+=(--clash-conf "${BOXCTL_CLASH_CONF}")
-    fi
-}
-
-# 字段本身都填了、也存在，仍可能起不来的那种情况：订阅留空交给 vpn.py 认领，而 wg 配置
-# 旁边不是恰好一份 yaml。它绝不猜，所以这里提前说，省得 start 时才发现。
-vpn_check() {
-    [[ -n "${BOXCTL_WG_CONF:-}" ]] || return 0
-    [[ -z "${BOXCTL_CLASH_CONF:-}" ]] || return 0
-
-    local dir count
-    dir="$(dirname "${BOXCTL_WG_CONF}")"
-    count="$(find "${dir}" -maxdepth 1 -type f -name '*.y*ml' 2>/dev/null | wc -l | tr -d ' ')"
-
-    if [[ "${count}" -gt 1 ]]; then
-        printf '  vpn: %s 下有 %s 份 yaml，BOXCTL_CLASH_CONF 留空时 vpn.py 不会猜，请指明一份\n' \
-            "${dir}" "${count}"
-    elif [[ "${count}" -eq 0 ]]; then
-        printf '  vpn: %s 下没有 yaml，BOXCTL_CLASH_CONF 又留空，start 会失败\n' "${dir}"
+    else
+        # 订阅留空就是「不要代理」。vpn.py 不再去目录里猜订阅，所以这里必须把意图说明白，
+        # 否则它会因为缺订阅直接拒绝启动。
+        _vpn_argv+=(--no-clash)
     fi
 }
 
@@ -82,7 +68,11 @@ vpn_restart() {
 # 详细状态转给 vpn.py：它能分别报三个子进程，比这里的端口探测细。
 vpn_status() {
     [[ -n "${BOXCTL_WG_CONF:-}" ]] || return 0
-    vpn status "${BOXCTL_WG_CONF}" 2>&1 | sed 's/^/  /'
+    local argv=("${BOXCTL_WG_CONF}")
+    if [[ -n "${BOXCTL_CLASH_CONF:-}" ]]; then
+        argv+=(--clash-conf "${BOXCTL_CLASH_CONF}")
+    fi
+    vpn status "${argv[@]}" 2>&1 | sed 's/^/  /'
 }
 
 vpn_logs() {

@@ -95,8 +95,7 @@ boxctl doctor                      # 依赖自检
 `boxctl` 这层刻意跟 ai4pcb 脱钩——它解决的是「容器启动权不在自己手里、重启后服务要自己
 回位」这个通用问题。加服务就在 `boxctl/services/` 下加一个文件，定义
 `<名字>_enabled` / `_running` / `_start` / `_stop` / `_restart` / `_status` / `_logs` / `_env`
-八个函数，文件名的数字前缀决定 `start all` 的顺序。再可选地定义一个 `_check`，做字段清单
-查不出来的交叉校验，`boxctl config` 会调它。
+八个函数，文件名的数字前缀决定 `start all` 的顺序。
 
 ## 配置
 
