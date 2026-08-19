@@ -42,6 +42,9 @@ COPY boxctl/ /opt/boxctl/
 COPY vpn/ /opt/boxctl/vpn/
 COPY fsferry/ /opt/boxctl/fsferry/
 COPY setup/justfile /opt/boxctl/setup.justfile
+# 文档跟代码同层，版本永远对得上。刻意不往 /root 放：那是用户的家目录，平台又靠快照留着
+# 它，塞进去的文档会在容器里冻住，镜像更新了也不会跟着变。
+COPY README.md /opt/boxctl/README.md
 
 RUN INSTALL_BUILD_TOOLS=1 bash /opt/boxctl/common/install-base.sh \
     && MIHOMO_VERSION="${MIHOMO_VERSION}" bash /opt/boxctl/common/install-mihomo.sh \

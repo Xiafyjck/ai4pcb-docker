@@ -69,6 +69,16 @@ targets() {
 
 # boot 日志跟着运行时产物走。没配 BOXCTL_STATE_DIR 时退到容器本地，重启即丢——但那种
 # 情况下也没有服务能起来，日志里除了「XX 未设置」也没别的。
+any_enabled() {
+    local s
+    for s in $(service_names); do
+        if "${s}_enabled"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 log_dir() {
     if [[ -n "${BOXCTL_STATE_DIR:-}" ]]; then
         printf '%s\n' "${BOXCTL_STATE_DIR}/log"
@@ -100,6 +110,13 @@ cmd_env() {
         printf '# boxctl: %s 不存在\n' "${BOXCTL_CONFIG}"
         log "配置不存在：cp ${BOXCTL_TEMPLATE} ${BOXCTL_CONFIG} 后编辑"
         return 0
+    fi
+
+    # 拿到镜像的人得有个发现入口：什么都没启用时提示一次。只在 stderr 是终端时打——平台
+    # 的启动脚本 source .bashrc 时没有 tty，不该往它的日志里灌东西；scp 只看 stdout，
+    # 不受影响。配好之后这行自然消失。
+    if [[ -t 2 ]] && ! any_enabled; then
+        log "还没启用任何服务。看 boxctl help，配置在 ${BOXCTL_CONFIG}"
     fi
 
     # 只导出服务真正要用的那几个。用户自己的 shell 偏好（缓存重定向、工具链开关）不归
@@ -266,6 +283,9 @@ usage() {
 
 服务: $(service_names | tr '\n' ' ')
 配置: ${BOXCTL_CONFIG}
+文档: ${BOXCTL_HOME}/README.md
+      ${BOXCTL_HOME}/vpn/README.md
+      ${BOXCTL_HOME}/fsferry/README.md
 EOF
 }
 
