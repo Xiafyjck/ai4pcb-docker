@@ -183,3 +183,28 @@ cu132-devel-ubuntu2404-sha-1a2b3c4
 ```bash
 just build
 ```
+
+## 发布到学院镜像仓库
+
+平台从学院自己的仓库拉镜像，所以 CI 推完 GHCR 之后还要转推一次。
+
+**学院仓库的标签是 immutable 的**——同一个标签推第二次会被拒，所以每次更新必须换一个新
+标签，`latest` 这种滚动标签在这里根本用不了。直接用 CI 那个带提交号的标签：它天然唯一，
+出问题时还能顺着标签找回对应的 commit。
+
+```bash
+TAG=cu132-devel-ubuntu2404-sha-1f23ca8      # 换成本次 CI 构建出的那个
+
+docker pull ghcr.io/OWNER/ai4pcb-docker:$TAG
+
+docker login docker-qb.sii.edu.cn
+docker tag ghcr.io/OWNER/ai4pcb-docker:$TAG \
+  docker-qb.sii.edu.cn/inspire-studio/ai4pcb-dev:$TAG
+docker push docker-qb.sii.edu.cn/inspire-studio/ai4pcb-dev:$TAG
+```
+
+在 Apple Silicon 上 `docker pull` 会提示平台不匹配——镜像只有 amd64。转推只是搬字节，
+不影响推送结果，忽略即可。
+
+不要拿不带提交号的 `cu132-devel-ubuntu2404` 去推学院仓库：那个标签在 GHCR 上每次构建都会
+被覆盖，而这边推过一次就再也推不上去了。
