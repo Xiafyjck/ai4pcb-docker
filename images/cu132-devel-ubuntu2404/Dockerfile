@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
+# 必须声明在第一个 FROM 之前：ARG 只有在这个位置才是全局的，写在别的 FROM 后面就归那个
+# stage 所有，FROM ${GO_IMAGE} 会拿到空串并报 "base name should not be blank"。
+ARG GO_IMAGE=golang:bookworm
+
 FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM ghcr.io/casey/just:latest AS just
 
@@ -7,7 +11,6 @@ FROM ghcr.io/casey/just:latest AS just
 # 构建期编译进镜像，换构建平台自动跟着走——它以前是预编译二进制搁在共享卷里，换到
 # arm64 机器就得手工重编一次。
 # 上游模块已迁到 windtf，旧的 pufferffish/octeep 路径会重定向过去并报 go.mod 路径校验错。
-ARG GO_IMAGE=golang:bookworm
 FROM ${GO_IMAGE} AS wireproxy
 ARG WIREPROXY_VERSION=latest
 ARG GOPROXY=https://goproxy.cn,direct
