@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 if [[ $# -eq 0 ]]; then
-    exec just --justfile /opt/ai4pcb/setup.justfile setup
+    exec just --justfile /opt/boxctl/setup.justfile setup
 fi
 
-exec just --justfile /opt/ai4pcb/setup.justfile "$@"
+exec just --justfile /opt/boxctl/setup.justfile "$@"

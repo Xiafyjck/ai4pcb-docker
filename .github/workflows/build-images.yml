@@ -10,7 +10,6 @@ on:
         default: cu132-devel-ubuntu2404
         options:
           - cu132-devel-ubuntu2404
-          - cu132-runtime-ubuntu2404
           - all
 
 permissions:

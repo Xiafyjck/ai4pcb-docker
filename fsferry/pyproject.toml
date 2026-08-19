@@ -1,0 +1,20 @@
+[project]
+name = "fsferry"
+version = "0.1.0"
+description = "在共享文件系统上摆渡命令:让没有 SSH 入口的机器可被远程执行"
+readme = "README.md"
+authors = [
+    { name = "xiafyjck", email = "xiafyjck@outlook.com" }
+]
+# 放宽下界而不是跟着 .python-version 绑死:这个工具要在"远端出事了"的时候还能用,
+# 绑高版本会让"随便找个 python3 把代理拉起来"这条退路失效。
+requires-python = ">=3.9"
+dependencies = []   # 只用标准库,刻意保持为空:少一层"环境没配好所以通道也起不来"的耦合
+
+[project.scripts]
+h200 = "fsferry.cli:main"
+fsferry-agent = "fsferry.agent:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"

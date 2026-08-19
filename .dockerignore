@@ -9,3 +9,10 @@ workspace
 *.tar
 *.tar.gz
 *.tar.zst
+
+# 同 .gitignore：这些即便本地存在也绝不能进镜像层
+vpn/wireguard
+vpn/.run
+vpn/*.yaml
+vpn/pcb
+vpn/pcb.pub

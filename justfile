@@ -1,16 +1,17 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-default: variants
+default: check
 
-default_variant := "cu132-devel-ubuntu2404"
-default_container := "ai4pcb-dev"
-default_port := "2222"
-default_key := env_var("HOME") + "/.ssh/id_ed25519.pub"
+# 推之前跑一遍：镜像构建在 CI，语法错误在这里发现比等 CI 跑完便宜得多。
+check:
+    for f in boxctl/boxctl.sh boxctl/services/*.sh common/*.sh; do bash -n "$f"; done
+    sh -n common/profile-boxctl.sh
+    python3 -m py_compile vpn/vpn.py fsferry/src/fsferry/*.py
+    @echo "ok"
 
-variants:
-    @find images -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort
-
-build variant=default_variant platform="linux/amd64":
+# 本地构建。日常不用——推上去由 CI 构建并推 GHCR。这条留给调 Dockerfile 时用，
+# 在 arm64 机器上会走 amd64 模拟，很慢。
+build variant="cu132-devel-ubuntu2404" platform="linux/amd64":
     test -f "images/{{variant}}/Dockerfile"
     docker buildx build \
       --platform "{{platform}}" \
@@ -19,37 +20,3 @@ build variant=default_variant platform="linux/amd64":
       -f "images/{{variant}}/Dockerfile" \
       -t "ai4pcb-docker:{{variant}}" \
       .
-
-run variant=default_variant name=default_container port=default_port:
-    docker run -d \
-      --name "{{name}}" \
-      --gpus all \
-      --shm-size=8g \
-      -p "{{port}}:22" \
-      "ai4pcb-docker:{{variant}}"
-
-key name=default_container key=default_key:
-    test -s "{{key}}"
-    docker cp "{{key}}" "{{name}}:/run/ssh/root.pub"
-
-ssh port=default_port:
-    ssh -p "{{port}}" root@127.0.0.1
-
-shell name=default_container:
-    docker exec -it "{{name}}" bash
-
-setup name=default_container:
-    docker exec -it "{{name}}" setup
-
-logs name=default_container:
-    docker logs -f "{{name}}"
-
-stop name=default_container:
-    docker stop "{{name}}"
-
-start name=default_container:
-    docker start "{{name}}"
-
-inspect name=default_container:
-    docker exec "{{name}}" bash -lc \
-      'nvcc --version 2>/dev/null || true; uv --version; just --version; curl --version | head -1'
