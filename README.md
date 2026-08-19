@@ -195,7 +195,7 @@ just build
 ```bash
 TAG=cu132-devel-ubuntu2404-sha-1f23ca8      # 换成本次 CI 构建出的那个
 
-docker pull ghcr.io/OWNER/ai4pcb-docker:$TAG
+docker pull --platform linux/amd64 ghcr.io/OWNER/ai4pcb-docker:$TAG
 
 docker login docker-qb.sii.edu.cn
 docker tag ghcr.io/OWNER/ai4pcb-docker:$TAG \
@@ -203,8 +203,11 @@ docker tag ghcr.io/OWNER/ai4pcb-docker:$TAG \
 docker push docker-qb.sii.edu.cn/inspire-studio/ai4pcb-dev:$TAG
 ```
 
-在 Apple Silicon 上 `docker pull` 会提示平台不匹配——镜像只有 amd64。转推只是搬字节，
-不影响推送结果，忽略即可。
+`--platform linux/amd64` 是显式声明要哪个架构。镜像只有 amd64，在 Apple Silicon 上不加
+这个参数 docker 会拿本机架构去匹配、然后警告平台不匹配；加上就没有歧义。转推只是把字节
+搬过去，本地能不能跑起来无所谓。
+
+（`--arch` 是 podman 的拼法，docker 用 `--platform`。）
 
 不要拿不带提交号的 `cu132-devel-ubuntu2404` 去推学院仓库：那个标签在 GHCR 上每次构建都会
 被覆盖，而这边推过一次就再也推不上去了。
