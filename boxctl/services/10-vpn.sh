@@ -36,6 +36,24 @@ _vpn_build_argv() {
     fi
 }
 
+# 字段本身都填了、也存在，仍可能起不来的那种情况：订阅留空交给 vpn.py 认领，而 wg 配置
+# 旁边不是恰好一份 yaml。它绝不猜，所以这里提前说，省得 start 时才发现。
+vpn_check() {
+    [[ -n "${BOXCTL_WG_CONF:-}" ]] || return 0
+    [[ -z "${BOXCTL_CLASH_CONF:-}" ]] || return 0
+
+    local dir count
+    dir="$(dirname "${BOXCTL_WG_CONF}")"
+    count="$(find "${dir}" -maxdepth 1 -type f -name '*.y*ml' 2>/dev/null | wc -l | tr -d ' ')"
+
+    if [[ "${count}" -gt 1 ]]; then
+        printf '  vpn: %s 下有 %s 份 yaml，BOXCTL_CLASH_CONF 留空时 vpn.py 不会猜，请指明一份\n' \
+            "${dir}" "${count}"
+    elif [[ "${count}" -eq 0 ]]; then
+        printf '  vpn: %s 下没有 yaml，BOXCTL_CLASH_CONF 又留空，start 会失败\n' "${dir}"
+    fi
+}
+
 # 探测而不是记状态：supervisord 的控制 socket 是它活着的定义（vpn.py 同样以此为准），
 # 再加一条 22 在监听，才算真的起来了——supervisor 只保证进程在，不保证它绑上了端口。
 vpn_running() {

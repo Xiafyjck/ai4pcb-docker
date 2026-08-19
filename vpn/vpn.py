@@ -115,7 +115,7 @@ def resolve_wg_conf(a) -> Path:
     return c
 
 
-def resolve_clash_conf(override, near: Path = None) -> Path:
+def resolve_clash_conf(override, near: Path = None, soft: bool = False):
     """定位 clash 订阅。
 
     订阅是所有容器共用的一份，跟 name 无关，所以不按 name 派生。不显式指定时认领
@@ -126,11 +126,20 @@ def resolve_clash_conf(override, near: Path = None) -> Path:
     找的目录有两个，按顺序：wg 配置所在的那个（near），再是回退基准 BASE。前者是
     本工具装进镜像之后的常态——BASE 那时指向镜像里的脚本目录，那儿永远不会有订阅；
     后者是共享卷上直接 ./vpn.py 的老布局，订阅就搁在脚本旁边。
+
+    soft=True 时定位不了只报一行、返回 None，不退出。给 status 这类只读命令用：订阅
+    选哪份跟三个服务在不在没有关系，不该因为前者不确定就连后者也看不成。
     """
+    def fail(msg):
+        if soft:
+            log(msg)
+            return None
+        die(msg)
+
     if override:
         c = Path(override).expanduser().resolve()
         if not c.is_file():
-            die(f"--clash-conf not found: {c}")
+            return fail(f"--clash-conf not found: {c}")
         return c
 
     searched = []
@@ -143,12 +152,12 @@ def resolve_clash_conf(override, near: Path = None) -> Path:
             return cands[0]
         if cands:
             names = ", ".join(p.name for p in cands)
-            die(f"{d} 下有多份 yaml：{names}\n"
-                f"       请用 --clash-conf <path> 指明用哪一份")
+            return fail(f"{d} 下有多份 yaml：{names}\n"
+                        f"       请用 --clash-conf <path> 指明用哪一份")
 
     where = "、".join(str(d) for d in searched)
-    die(f"没有在 {where} 找到 clash 订阅（*.yaml）\n"
-        f"       用 --clash-conf <path> 指定，或把订阅放到 wg 配置旁边")
+    return fail(f"没有在 {where} 找到 clash 订阅（*.yaml）\n"
+                f"       用 --clash-conf <path> 指定，或把订阅放到 wg 配置旁边")
 
 
 def clash_port(conf: Path) -> int:
@@ -641,9 +650,10 @@ def status(a) -> None:
     out = ctl(a.name, "status", capture=True)
     for line in out.strip().splitlines():
         log(line)
-    clash_conf = resolve_clash_conf(a.clash_conf, resolve_wg_conf(a).parent)
-    port = clash_port(clash_conf)
-    log(f"clash 配置: {clash_conf.name}  代理: 127.0.0.1:{port}  API: {CLASH_API}")
+    clash_conf = resolve_clash_conf(a.clash_conf, resolve_wg_conf(a).parent, soft=True)
+    if clash_conf:
+        port = clash_port(clash_conf)
+        log(f"clash 配置: {clash_conf.name}  代理: 127.0.0.1:{port}  API: {CLASH_API}")
     log(f"日志目录: {run_dir(a.name) / 'log'}")
 
 
