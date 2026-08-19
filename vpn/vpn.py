@@ -45,6 +45,7 @@ import fcntl
 import ipaddress
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -230,11 +231,15 @@ def build_supervisord_conf(name: str, rd: Path, wp_conf: Path,
     logd.mkdir(parents=True, exist_ok=True)
     clean_env = ",".join(f'{k}=""' for k in PROXY_VARS)
 
+    # supervisord 把 command= 按空白拆成 argv，所以每个路径都得引起来——运行时目录或
+    # 订阅落在带空格的路径下时，不引会拆成两个参数，mihomo 直接找不到文件。
     prog = {
-        "sshd": f"/usr/sbin/sshd -D -e",
-        "mihomo": (f"/usr/local/bin/mihomo -d {rd / 'mihomo'} "
-                   f"-f {clash_conf} -ext-ctl {CLASH_API}"),
-        "wireproxy": f"{wireproxy_bin()} -c {wp_conf}",
+        "sshd": "/usr/sbin/sshd -D -e",
+        "mihomo": shlex.join(["/usr/local/bin/mihomo",
+                              "-d", str(rd / "mihomo"),
+                              "-f", str(clash_conf),
+                              "-ext-ctl", CLASH_API]),
+        "wireproxy": shlex.join([wireproxy_bin(), "-c", str(wp_conf)]),
     }
 
     blocks = [f"""[supervisord]
@@ -309,6 +314,18 @@ def install_authorized_key() -> None:
     """
     if not PUBKEY.is_file():
         die(f"pubkey missing: {PUBKEY}")
+
+    # 空文件或者随手写坏的一行同样能被复制过去，而 start 的核对只看端口和进程，于是
+    # 一切报绿、每一次 SSH 登录都失败。在覆盖 authorized_keys 之前先确认它确实是公钥。
+    if PUBKEY.stat().st_size == 0:
+        die(f"pubkey is empty: {PUBKEY}")
+    if shutil.which("ssh-keygen"):
+        r = subprocess.run(["ssh-keygen", "-l", "-f", str(PUBKEY)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if r.returncode != 0:
+            die(f"pubkey is not a valid public key: {PUBKEY}\n"
+                f"       {r.stderr.decode(errors='replace').strip()}")
+
     ssh_dir = Path.home() / ".ssh"
     ssh_dir.mkdir(exist_ok=True)
     os.chmod(ssh_dir, 0o700)
@@ -697,16 +714,21 @@ def main() -> None:
     # 实际加载的是另一份，而运行时目录还挂在名字底下。
     #
     # clash 订阅则相反，它是所有容器共用的一份，跟“本容器是谁”无关，所以留作选项。
-    a.spec, a.wg = a.name, None
-    if "/" in a.name or a.name.endswith(".conf"):
-        p = Path(a.name).expanduser().resolve()
-        if not p.is_file():
-            die(f"wg config not found: {p}")
-        a.wg, a.name = p, p.stem      # 实例名取文件名，运行时目录随之确定
-
     # up/down/stop 是旧名字，留作别名——肌肉记忆比命名整洁重要。
     action = {"up": "start", "down": "shutdown", "stop": "shutdown"}.get(
         a.action, a.action)
+
+    a.spec, a.wg = a.name, None
+    if "/" in a.name or a.name.endswith(".conf"):
+        p = Path(a.name).expanduser().resolve()
+        if p.is_file():
+            a.wg, a.name = p, p.stem      # 实例名取文件名，运行时目录随之确定
+        elif action in ("shutdown", "status", "logs"):
+            # 控制类动作只需要实例名。共享卷抖一下、或者配置被挪走时，仍然得能停掉、
+            # 看得到已经在跑的那套——否则一个读不到配置的容器就再也关不掉了。
+            a.name = p.stem
+        else:
+            die(f"wg config not found: {p}")
     {
         "start": start, "shutdown": shutdown, "restart": restart,
         "status": status, "logs": logs, "bashsetup": bashsetup,

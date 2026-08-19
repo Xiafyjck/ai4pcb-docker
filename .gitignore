@@ -2,10 +2,13 @@
 .env
 .idea/
 .vscode/
+.codex/
 workspace/
 *.tar
 *.tar.gz
 *.tar.zst
+*.gz
+config.yaml
 
 # vpn 的数据目录只属于共享卷：wg 私钥、SSH 主机密钥、机场订阅、运行时产物一律不进仓库
 vpn/wireguard/

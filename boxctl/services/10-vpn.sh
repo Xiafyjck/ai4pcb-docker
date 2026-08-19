@@ -20,10 +20,17 @@ _vpn_instance() {
     printf '%s\n' "${base%.conf}"
 }
 
+# 起服务要真读得到配置。
 _vpn_require() {
-    [[ -n "${BOXCTL_WG_CONF:-}" ]] || die "BOXCTL_WG_CONF 未设置"
+    _vpn_require_name
     [[ -r "${BOXCTL_WG_CONF}" ]] || die "BOXCTL_WG_CONF 读不到：${BOXCTL_WG_CONF}"
     [[ -n "${BOXCTL_STATE_DIR:-}" ]] || die "BOXCTL_STATE_DIR 未设置"
+}
+
+# 停服务、看状态、看日志只需要实例名，而实例名从路径字符串就能取出来。配置读不到时
+# 仍然要能关掉已经在跑的那套——否则共享卷抖一下，这个容器就再也停不下来了。
+_vpn_require_name() {
+    [[ -n "${BOXCTL_WG_CONF:-}" ]] || die "BOXCTL_WG_CONF 未设置"
 }
 
 # 传给 vpn.py 的公共参数，结果放进 _vpn_argv。位置参数直接给 wg 配置的路径，实例名由它
@@ -55,7 +62,7 @@ vpn_start() {
 }
 
 vpn_stop() {
-    _vpn_require
+    _vpn_require_name
     vpn shutdown "${BOXCTL_WG_CONF}"
 }
 
@@ -76,6 +83,6 @@ vpn_status() {
 }
 
 vpn_logs() {
-    _vpn_require
+    _vpn_require_name
     vpn logs "${BOXCTL_WG_CONF}" "$@"
 }

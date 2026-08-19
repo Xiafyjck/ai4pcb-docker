@@ -11,11 +11,13 @@ check:
 
 # 本地构建。日常不用——推上去由 CI 构建并推 GHCR。这条留给调 Dockerfile 时用，
 # 在 arm64 机器上会走 amd64 模拟，很慢。
+# TOOL_REFRESH 传时间戳：node/mihomo 都跟 latest，不破缓存的话它们会被冻在第一次构建那天。
 build variant="cu132-devel-ubuntu2404" platform="linux/amd64":
     test -f "images/{{variant}}/Dockerfile"
     docker buildx build \
       --platform "{{platform}}" \
       --pull \
+      --build-arg "TOOL_REFRESH=$(date -u +%Y%m%d%H%M%S)" \
       --load \
       -f "images/{{variant}}/Dockerfile" \
       -t "ai4pcb-docker:{{variant}}" \

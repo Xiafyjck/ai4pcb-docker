@@ -1,27 +1,64 @@
 #!/usr/bin/env bash
-# 装 mihomo（clash 内核）。构建期执行，vpn.py 运行时只查 PATH。
 set -Eeuo pipefail
 
-version="${MIHOMO_VERSION:-latest}"
+mihomo_version="${MIHOMO_VERSION:-latest}"
 
-case "$(dpkg --print-architecture)" in
-amd64) arch="amd64" ;;
-arm64) arch="arm64" ;;
-*) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;;
+case "$(uname -m)" in
+    x86_64)
+        mihomo_platform="linux-amd64-compatible"
+        ;;
+    *)
+        echo "Unsupported Mihomo architecture: $(uname -m)" >&2
+        exit 1
+        ;;
 esac
 
-# 解析 latest 走 releases/latest 的重定向而不是 api.github.com：后者匿名调用有每小时
-# 60 次的限额，CI 上撞限额会让构建莫名其妙地失败，而重定向没有限额。
-if [[ "${version}" == "latest" ]]; then
-    version="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-        https://github.com/MetaCubeX/mihomo/releases/latest)"
-    version="${version##*/}"
-fi
-[[ -n "${version}" && "${version}" != "null" ]] || { echo "cannot resolve mihomo version" >&2; exit 1; }
+temp_dir="$(mktemp -d)"
+trap 'rm -rf -- "$temp_dir"' EXIT
 
-# 发布物形如 mihomo-linux-amd64-v1.19.0.gz，解开就是可执行文件本体。
-url="https://github.com/MetaCubeX/mihomo/releases/download/${version}/mihomo-linux-${arch}-${version}.gz"
-echo "downloading ${url}"
-curl -fsSL "${url}" | gzip -d > /usr/local/bin/mihomo
-chmod 0755 /usr/local/bin/mihomo
+if [[ "${mihomo_version}" == "latest" ]]; then
+    mihomo_release_url="$(
+        curl --proto '=https' --tlsv1.2 -LsS \
+            -o /dev/null \
+            -w '%{url_effective}' \
+            https://github.com/MetaCubeX/mihomo/releases/latest
+    )"
+    mihomo_tag="${mihomo_release_url##*/}"
+else
+    mihomo_tag="${mihomo_version}"
+    [[ "${mihomo_tag}" == v* ]] || mihomo_tag="v${mihomo_tag}"
+fi
+
+[[ "${mihomo_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+asset="mihomo-${mihomo_platform}-${mihomo_tag}.gz"
+
+curl --proto '=https' --tlsv1.2 -fsSL \
+    "https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/${mihomo_tag}" \
+    -o "${temp_dir}/release.json"
+
+asset_url="$(
+    jq -er --arg asset "${asset}" \
+        '.assets[] | select(.name == $asset) | .browser_download_url' \
+        "${temp_dir}/release.json"
+)"
+asset_digest="$(
+    jq -er --arg asset "${asset}" \
+        '.assets[] | select(.name == $asset) | .digest' \
+        "${temp_dir}/release.json"
+)"
+
+[[ "${asset_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+mihomo_sha256="${asset_digest#sha256:}"
+
+curl --proto '=https' --tlsv1.2 -fsSL \
+    "${asset_url}" \
+    -o "${temp_dir}/${asset}"
+
+printf '%s  %s\n' \
+    "${mihomo_sha256}" \
+    "${temp_dir}/${asset}" \
+    | sha256sum -c -
+
+gzip -dc "${temp_dir}/${asset}" > "${temp_dir}/mihomo"
+install -m 0755 "${temp_dir}/mihomo" /usr/local/bin/mihomo
 mihomo -v

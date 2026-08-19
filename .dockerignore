@@ -4,10 +4,14 @@
 .env
 .idea
 .vscode
+.codex
 workspace
 *.tar
 *.tar.gz
 *.tar.zst
+*.gz
+config.yaml
+CODE_REVIEW.md
 
 # 同 .gitignore：这些即便本地存在也绝不能进镜像层
 vpn/wireguard

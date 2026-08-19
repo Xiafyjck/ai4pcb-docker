@@ -38,10 +38,16 @@ jobs:
           set -Eeuo pipefail
 
           if [[ "$SELECTED" == "all" ]]; then
-            mapfile -t variants < <(
-              find images -mindepth 1 -maxdepth 1 -type f -name Dockerfile \
-                -printf '%h\n' | xargs -n1 basename | sort
-            )
+            variants=()
+            for dockerfile in images/*/Dockerfile; do
+              [[ -f "$dockerfile" ]] || continue
+              variant="${dockerfile#images/}"
+              variants+=("${variant%/Dockerfile}")
+            done
+            ((${#variants[@]} > 0)) || {
+              echo "No image variants found" >&2
+              exit 1
+            }
           else
             [[ "$SELECTED" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
             [[ -f "images/$SELECTED/Dockerfile" ]]
@@ -92,6 +98,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # node 和 mihomo 都跟 latest。不破缓存的话那一层会被永久冻在第一次构建那天，
+          # 「跟 latest」就成了一句空话。
+          build-args: |
+            TOOL_REFRESH=${{ github.run_id }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
           provenance: mode=max

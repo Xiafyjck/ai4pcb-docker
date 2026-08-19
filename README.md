@@ -8,6 +8,7 @@
 
 镜像包含：
 
+- root 公钥 SSH，仅允许公钥登录
 - `uv`、`just`、Git、curl、wget、rsync
 - ping、ip/ss、dig、nc、mtr、traceroute、tcpdump、socat 等诊断工具
 - `wireproxy`（构建期编译）、`mihomo`、`supervisor`、`openssh-server`

@@ -4,7 +4,6 @@
 # stage 所有，FROM ${GO_IMAGE} 会拿到空串并报 "base name should not be blank"。
 ARG GO_IMAGE=golang:bookworm
 
-FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM ghcr.io/casey/just:latest AS just
 
 # wireproxy：用户态 WireGuard，不需要 /dev/net/tun 和 NET_ADMIN，受管控的容器也能用。
@@ -19,9 +18,12 @@ RUN go install github.com/windtf/wireproxy/cmd/wireproxy@${WIREPROXY_VERSION}
 
 FROM nvidia/cuda:13.2.1-devel-ubuntu24.04
 
-ARG MIHOMO_VERSION=latest
-ARG NVM_VERSION=v0.40.6
+ARG NVM_VERSION=latest
 ARG NODE_VERSION=node
+ARG MIHOMO_VERSION=latest
+# 改变它会让下面那层滚动工具重装。CI 传 run id，本地 just build 传时间戳——否则
+# "latest" 会被缓存层永久冻在第一次构建那天。
+ARG TOOL_REFRESH=manual
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -32,9 +34,8 @@ ENV LANG=C.UTF-8 \
     BOXCTL_HOME=/opt/boxctl \
     NVM_DIR=/root/.nvm \
     NVM_SYMLINK_CURRENT=true \
-    PATH=/root/.nvm/current/bin:${PATH}
+    PATH=/root/.nvm/current/bin:/root/.local/bin:${PATH}
 
-COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=just /just /usr/local/bin/just
 COPY --from=wireproxy /go/bin/wireproxy /usr/local/bin/wireproxy
 COPY common/ /opt/boxctl/common/
@@ -46,22 +47,36 @@ COPY setup/justfile /opt/boxctl/setup.justfile
 # 它，塞进去的文档会在容器里冻住，镜像更新了也不会跟着变。
 COPY README.md /opt/boxctl/README.md
 
+# uv 走官方安装器而不是 ghcr 上那个镜像：后者是 musl 静态构建，在本镜像里 DNS 解析会
+# 失败。ldd 那行是这条约束的守卫——真装成静态二进制时它会当场炸，而不是等到运行时
+# 某次下载莫名其妙超时。
 RUN INSTALL_BUILD_TOOLS=1 bash /opt/boxctl/common/install-base.sh \
-    && MIHOMO_VERSION="${MIHOMO_VERSION}" bash /opt/boxctl/common/install-mihomo.sh \
-    && NVM_VERSION="${NVM_VERSION}" NODE_VERSION="${NODE_VERSION}" \
-       bash /opt/boxctl/common/install-node.sh \
-    && uv tool install --python /usr/bin/python3 /opt/boxctl/fsferry \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && nvcc --version \
     && uv --version \
+    && ldd /root/.local/bin/uv \
     && just --version \
     && wireproxy --version \
     && command -v supervisord \
+    && command -v vim \
     && command -v curl \
     && command -v ping \
     && command -v ss \
-    && command -v dig \
+    && command -v dig
+
+# 滚动版本的工具单独一层，靠 TOOL_REFRESH 破缓存，不去动上面那层 apt。
+RUN echo "Refreshing rolling tools: ${TOOL_REFRESH}" \
+    && NVM_VERSION="${NVM_VERSION}" NODE_VERSION="${NODE_VERSION}" \
+       bash /opt/boxctl/common/install-node.sh \
+    && MIHOMO_VERSION="${MIHOMO_VERSION}" \
+       bash /opt/boxctl/common/install-mihomo.sh \
     && node --version \
     && npm --version \
+    && mihomo -v
+
+# fsferry 装成命令，通道目录由 FSFERRY_DIR 在运行时给。指定 /usr/bin/python3 是为了不让
+# uv 再去下一个托管解释器：这个包零依赖，系统 python 足够。
+RUN uv tool install --python /usr/bin/python3 /opt/boxctl/fsferry \
     && vpn --help > /dev/null \
     && h200 --help > /dev/null \
     && boxctl doctor

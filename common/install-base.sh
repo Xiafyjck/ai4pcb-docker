@@ -55,6 +55,9 @@ rm -rf /var/lib/apt/lists/*
 install -d -m 0755 /run/sshd
 install -d -m 0700 /run/ssh /root/.ssh
 
+# 刻意不建 /etc/mihomo、/var/lib/mihomo：它们在容器可写层，重启即丢，geoip 数据库每次
+# 都得重下。mihomo 的工作目录由 vpn.py 指到共享卷上的运行时目录。
+
 # 镜像里刻意不带 SSH 主机密钥：否则由本镜像起的所有容器共用同一个主机身份。每个容器
 # 各自的密钥由 vpn.py 首次启动时生成、存进共享卷，此后跨重启不变——客户端不会再撞上
 # REMOTE HOST IDENTIFICATION HAS CHANGED。
